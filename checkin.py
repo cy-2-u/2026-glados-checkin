@@ -16,7 +16,7 @@ import json
 import os
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 # Fix Windows Unicode Output
 if sys.platform.startswith('win'):
@@ -231,7 +231,9 @@ def main():
     if nickname:
         title = f"GLaDOS 签到：成功{success_cnt}/{len(cookies)}"
         content = "\n".join(results)
-        content += f"\n时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        # 使用北京时间 (UTC+8)
+        beijing_time = datetime.now(timezone.utc) + timedelta(hours=8)
+        content += f"\n时间：{beijing_time.strftime('%Y-%m-%d %H:%M:%S')} (北京时间)"
         
         webhook_push(title, content)
 
