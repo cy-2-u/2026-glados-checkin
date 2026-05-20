@@ -29,7 +29,6 @@ jobs:
         timeout-minutes: 5
         env:
           GLADOS_COOKIE: ${{ secrets.GLADOS_COOKIE }}
-          MEOW_NICKNAME: ${{ secrets.MEOW_NICKNAME }}
 
       - name: Retry on Failure
         if: failure()
@@ -40,4 +39,3 @@ jobs:
         timeout-minutes: 5
         env:
           GLADOS_COOKIE: ${{ secrets.GLADOS_COOKIE }}
-          MEOW_NICKNAME: ${{ secrets.MEOW_NICKNAME }}

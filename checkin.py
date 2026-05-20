@@ -158,8 +158,9 @@ class GLaDOS:
 
 # ================= 主程序 =================
 
-def webhook_push(nickname, title, msg):
+def webhook_push(title, msg):
     """使用 MeoW webhook API 推送文本消息"""
+    nickname = "第五个季节"
     if not nickname: 
         log("⏭️ 未配置 MEOW_NICKNAME，跳过推送")
         return
@@ -220,14 +221,14 @@ def main():
         log("⏭️ 根据 PUSH_LEVEL=fail_only 设置，所有账号签到成功，跳过推送")
         return
 
-    nickname = os.environ.get("MEOW_NICKNAME")
+    nickname = os.environ.get("MEOW_NICKNAME", "第五个季节")
     
     if nickname:
         title = f"GLaDOS 签到：成功{success_cnt}/{len(cookies)}"
         content = "\n".join(results)
         content += f"\n时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         
-        webhook_push(nickname, title, content)
+        webhook_push(title, content)
 
 if __name__ == '__main__':
     main()
