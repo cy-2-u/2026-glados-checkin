@@ -169,12 +169,14 @@ def webhook_push(title, msg):
         encoded_title = quote(title)
         encoded_msg = quote(msg)
         url = f"https://api.chuckfang.com/{nickname}/{encoded_title}/{encoded_msg}"
+        log(f"推送 URL: {url}")
         resp = requests.get(url, params={'msgType': 'text'}, timeout=5)
+        log(f"响应状态码：{resp.status_code}, 内容：{resp.text}")
         result = resp.json()
-        if result.get('status') == 200:
+        if result.get('status') == 200 or result.get('data') == True:
             log("✅ 推送成功")
         else:
-            log(f"❌ 推送失败：{result.get('message')}")
+            log(f"❌ 推送失败：{result.get('msg', result)}")
     except Exception as e:
         log(f"❌ 推送失败：{e}")
 
