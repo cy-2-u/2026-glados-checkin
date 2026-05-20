@@ -162,12 +162,15 @@ def webhook_push(title, msg):
     """使用 MeoW webhook API 推送文本消息"""
     nickname = "第五个季节"
     if not nickname: 
-        log("⏭️ 未配置 MEOW_NICKNAME，跳过推送")
+        log("⏭️ 未配置昵称，跳过推送")
         return
     try:
         from urllib.parse import quote
-        encoded_title = quote(title)
-        encoded_msg = quote(msg)
+        # 标题不能包含特殊字符（冒号、斜杠等）
+        safe_title = title.replace("：", "-").replace(":", "-").replace("/", "-")
+        encoded_title = quote(safe_title)
+        # 消息内容需要 URL 编码
+        encoded_msg = quote(msg, safe='')
         url = f"https://api.chuckfang.com/{nickname}/{encoded_title}/{encoded_msg}"
         log(f"推送 URL: {url}")
         resp = requests.get(url, params={'msgType': 'text'}, timeout=5)
