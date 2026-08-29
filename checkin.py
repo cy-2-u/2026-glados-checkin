@@ -31,6 +31,14 @@ DOMAINS = [
     "https://glados.network",
 ]
 
+# 积分兑换档位：key 为环境变量 GLADOS_EXCHANGE_PLAN 的取值
+# （100 分→10 天 / 200 分→30 天 / 500 分→100 天）
+EXCHANGE_PLANS = {
+    "100": {"type": "plan100", "points": 100, "days": 10},
+    "200": {"type": "plan200", "points": 200, "days": 30},
+    "500": {"type": "plan500", "points": 500, "days": 100},
+}
+
 HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     'Content-Type': 'application/json;charset=UTF-8',
@@ -86,9 +94,10 @@ class GLaDOS:
         self.points = "?"
         self.points_change = "?"
         self.exchange_info = ""
-        self.plan = "?"
+        self.exchanged_plan = None  # 本次已成功兑换的档位 (plan100/plan200/plan500)
+        self.exchange_failure = None  # (plan_type, reason)，仅保留本次运行状态
         
-    def req(self, method, path, data=None):
+    def req(self, method, path, data=None, form=False):
         """带自动域名切换的请求"""
         for d in DOMAINS:
             try:
@@ -100,6 +109,9 @@ class GLaDOS:
                 
                 if method == 'GET':
                     resp = requests.get(url, headers=h, timeout=10)
+                elif form:
+                    h.pop('Content-Type', None)
+                    resp = requests.post(url, headers=h, data=data, timeout=10)
                 else:
                     resp = requests.post(url, headers=h, json=data, timeout=10)
                 
@@ -144,10 +156,14 @@ class GLaDOS:
             for plan_id, plan_data in plans.items():
                 need = plan_data['points']
                 days = plan_data['days']
-                if pts >= need:
+                if self.exchanged_plan and plan_id == self.exchanged_plan:
+                    exchange_lines.append(f"✅ {need}分→{days}天 (已兑换)")
+                elif pts >= need:
                     exchange_lines.append(f"✅ {need}分→{days}天 (可兑换)")
                 else:
                     exchange_lines.append(f"❌ {need}分→{days}天 (差{need-pts}分)")
+                if self.exchange_failure and plan_id == self.exchange_failure[0]:
+                    exchange_lines.append(f"   兑换失败: {self.exchange_failure[1]}")
             self.exchange_info = "\n".join(exchange_lines)
             return True
         return False
@@ -155,6 +171,45 @@ class GLaDOS:
     def checkin(self):
         """执行签到"""
         return self.req('POST', '/api/user/checkin', {'token': 'glados.cloud'})
+
+    def exchange(self, plan_type):
+        """执行积分兑换，plan_type 为 plan100/plan200/plan500"""
+        return self.req('POST', '/api/user/exchange', {'planType': plan_type}, form=True)
+
+    def do_exchange(self, plan):
+        """
+        按档位自动兑换：积分充足则兑换并刷新积分/天数。
+        返回 (success: bool, msg: str, need_exchange: bool)。
+        need_exchange 为 True 表示"确实尝试了兑换"（非积分不足跳过）。
+        """
+        need = plan['points']
+        days = plan['days']
+        try:
+            pts = int(float(self.points))
+        except (TypeError, ValueError):
+            pts = 0
+        if pts < need:
+            return False, f"积分不足({pts}/{need}分)", False
+        try:
+            res = self.exchange(plan['type'])
+            if res and str(res.get('code')) == '0':
+                self.exchanged_plan = plan['type']
+                self.get_points()
+                self.get_status()
+                return True, f"兑换成功 +{days}天", True
+            msg = self._brief_reason((res or {}).get('message', '未知错误'))
+            self.exchange_failure = (plan['type'], msg)
+            return False, f"兑换失败: {msg}", True
+        except Exception as e:
+            msg = self._brief_reason(f"{type(e).__name__} {e}")
+            self.exchange_failure = (plan['type'], msg)
+            return False, f"兑换失败: {msg}", True
+
+    @staticmethod
+    def _brief_reason(reason):
+        """压缩兑换失败原因，避免换行或过长文本破坏推送格式。"""
+        reason = " ".join(str(reason).split())
+        return reason[:120] + "..." if len(reason) > 120 else reason
 
 # ================= 主程序 =================
 
@@ -187,7 +242,23 @@ def main():
     log("🚀 2026 GLaDOS Checkin Starting...")
     cookies = get_cookies()
     if not cookies: sys.exit(1)
-    
+
+    # 自动兑换档位（可选）：GLADOS_EXCHANGE_PLAN=100/200/500，
+    # 积分达到该档要求后签到时自动兑换；默认关闭不影响现有逻辑
+    raw_plan = os.environ.get("GLADOS_EXCHANGE_PLAN", "").strip()
+    if raw_plan:
+        if raw_plan in EXCHANGE_PLANS:
+            exchange_plan = raw_plan
+            log(
+                f"⚙️ 已启用自动兑换: {raw_plan} 积分 → "
+                f"{EXCHANGE_PLANS[raw_plan]['days']} 天"
+            )
+        else:
+            exchange_plan = None
+            log(f"⚠️ GLADOS_EXCHANGE_PLAN 值 '{raw_plan}' 无效，可选 100/200/500，本次跳过兑换")
+    else:
+        exchange_plan = None
+
     results = []
     success_cnt = 0
     
@@ -201,14 +272,26 @@ def main():
         # 2. Get Info (Refresh data)
         g.get_status()
         g.get_points()
-        
-        # 3. Log
-        status_icon = "✅" if "Checkin" in msg else "⚠️"
+
+        # 3. Auto Exchange (可选，不影响签到结果)
+        #    成功/跳过/失败均记录原因；跳过只在日志中记录，失败原因写入目标档位下方
+        if exchange_plan:
+            ok, ex_msg, need_exchange = g.do_exchange(EXCHANGE_PLANS[exchange_plan])
+            if ok:
+                log(f"用户：{g.email} | 兑换成功：{ex_msg}")
+            elif not need_exchange:
+                log(f"用户：{g.email} | 积分不足，跳过兑换：{ex_msg}")
+            else:
+                log(f"用户：{g.email} | {ex_msg}")
+                # 兑换失败信息需在现有兑换选项区域内展示，不额外发送通知
+                g.get_points()
+
+        # 4. Log
         log(f"用户：{g.email} | 积分：{g.points} | 天数：{g.left_days} | 结果：{msg}")
         
         if "Checkin" in msg: success_cnt += 1
         
-        # 4. Result Formatting
+        # 5. Result Formatting (保持原有推送格式)
         result_text = f"""
 👤 {g.email}
 当前积分：{g.points} ({g.points_change})
@@ -221,20 +304,20 @@ def main():
 
     # Push
     push_level = os.environ.get("PUSH_LEVEL", "all").lower()
-    
+    beijing_time = datetime.now(timezone.utc) + timedelta(hours=8)
+    ts = beijing_time.strftime('%Y-%m-%d %H:%M:%S')
+
     if push_level == "fail_only" and success_cnt == len(cookies):
         log("⏭️ 根据 PUSH_LEVEL=fail_only 设置，所有账号签到成功，跳过推送")
         return
 
     nickname = os.environ.get("MEOW_NICKNAME", "第五个季节")
-    
+
     if nickname:
         title = f"GLaDOS 签到：成功{success_cnt}/{len(cookies)}"
         content = "\n".join(results)
-        # 使用北京时间 (UTC+8)
-        beijing_time = datetime.now(timezone.utc) + timedelta(hours=8)
-        content += f"\n时间：{beijing_time.strftime('%Y-%m-%d %H:%M:%S')} (北京时间)"
-        
+        content += f"\n时间：{ts} (北京时间)"
+
         webhook_push(title, content)
 
 if __name__ == '__main__':
