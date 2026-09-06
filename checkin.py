@@ -96,6 +96,7 @@ class GLaDOS:
         self.exchange_info = ""
         self.exchanged_plan = None  # 本次已成功兑换的档位 (plan100/plan200/plan500)
         self.exchange_failure = None  # (plan_type, reason)，仅保留本次运行状态
+        self.compare_points = None  # 兑换选项比较用积分；兑换成功后刷新为扣完后的余额
         
     def req(self, method, path, data=None, form=False):
         """带自动域名切换的请求"""
@@ -139,6 +140,12 @@ class GLaDOS:
         if res and 'points' in res:
             # 当前积分
             self.points = str(res.get('points', '0')).split('.')[0]
+            try:
+                current_pts = int(self.points)
+            except (TypeError, ValueError):
+                current_pts = 0
+            if self.compare_points is None:
+                self.compare_points = current_pts
             
             # 最近一次积分变化
             history = res.get('history', [])
@@ -149,9 +156,9 @@ class GLaDOS:
                     change = '+' + change
                 self.points_change = change
             
-            # 兑换计划
+            # 兑换计划：用 compare_points，避免和当前余额混用
             plans = res.get('plans', {})
-            pts = int(self.points)
+            pts = self.compare_points
             exchange_lines = []
             for plan_id, plan_data in plans.items():
                 need = plan_data['points']
@@ -194,6 +201,7 @@ class GLaDOS:
             res = self.exchange(plan['type'])
             if res and str(res.get('code')) == '0':
                 self.exchanged_plan = plan['type']
+                self.compare_points = None
                 self.get_points()
                 self.get_status()
                 return True, f"兑换成功 +{days}天", True
