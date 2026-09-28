@@ -73,6 +73,18 @@ def extract_cookie(raw: str):
     # Standard
     return raw
 
+def is_checkin_success(res, msg):
+    if not res:
+        return False
+    text = str(msg)
+    if "没有权限" in text:
+        return False
+    if "Checkin" in text:
+        return True
+    if "observation logged" in text.lower():
+        return True
+    return str(res.get("code", "")) in ("0", "1")
+
 def get_cookies():
     raw = os.environ.get("GLADOS_COOKIE", "")
     if not raw:
@@ -297,7 +309,7 @@ def main():
         # 4. Log
         log(f"用户：{g.email} | 积分：{g.points} | 天数：{g.left_days} | 结果：{msg}")
         
-        if "Checkin" in msg: success_cnt += 1
+        if is_checkin_success(res, msg): success_cnt += 1
         
         # 5. Result Formatting (保持原有推送格式)
         result_text = f"""

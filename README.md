@@ -238,7 +238,7 @@ GLaDOS 在 2026 年初进行了 API 更新，**绝大多数旧签到脚本已失
 
 ![Cookie-Editor 扩展](images/cookie-extension.png)
 
-> 💡 **提示**：以下任意一个扩展都可以使用，只要能显示 `koa:sess` 和 `koa:sess.sig` 这两个 Cookie 就行！
+> 💡 **提示**：GLaDOS 已改用 `gld:sess` / `gld:sess.sig` 作为登录态。旧的 `koa:sess` 可以同时存在，但不能单独用来签到。
 
 ![可选的 Cookie 扩展](images/cookie-alternative.png)
 
@@ -247,9 +247,9 @@ GLaDOS 在 2026 年初进行了 API 更新，**绝大多数旧签到脚本已失
 1. 打开 [https://glados.cloud](https://glados.cloud) 并登录
 2. 进入 **签到页面**（Console → Checkin）
 3. 点击浏览器右上角的 **Cookie-Editor** 扩展图标
-4. 找到并复制这两个值：
-   - `koa:sess` → 一串很长的字符串
-   - `koa:sess.sig` → 一串较短的字符串
+4. 找到并复制这两个值（必须成对）：
+   - `gld:sess` → 以 `gld_` 开头的一串字符串
+   - `gld:sess.sig` → 一串较短的签名
 
 ![获取 Cookie](images/glados-cookies.png)
 
@@ -258,14 +258,16 @@ GLaDOS 在 2026 年初进行了 API 更新，**绝大多数旧签到脚本已失
 将两个值按以下格式组合，**注意格式必须完全正确**：
 
 ```text
-koa:sess=你的长字符串; koa:sess.sig=你的短字符串
+gld:sess=你的gld_字符串; gld:sess.sig=你的短字符串
 ```
 
 **正确示例**：
 
 ```text
-koa:sess=eyJ1c2VySWQiOjEyMzQ1Njc4OTB9; koa:sess.sig=abcdef123456
+gld:sess=gld_xxxxxxxx; gld:sess.sig=abcdefghijklmnop
 ```
+
+浏览器里如果还能看到 `koa:sess`，可以一起贴进去，真正生效的是 `gld:sess`。只有 `koa:sess` 会返回「没有权限」。
 
 **常见错误**：
 
@@ -280,17 +282,13 @@ koa:sess=eyJ1c2VySWQiOjEyMzQ1Njc4OTB9; koa:sess.sig=abcdef123456
 
 ```python
 # 将你的 Cookie 粘贴到下面的引号中
-cookie = "koa:sess=你的长字符串; koa:sess.sig=你的短字符串"
+cookie = "gld:sess=你的gld_字符串; gld:sess.sig=你的短字符串"
 
 # 验证
-if "koa:sess=" in cookie and "koa:sess.sig=" in cookie and "; " in cookie:
-    parts = cookie.split("; ")
-    if len(parts) == 2 and parts[0].startswith("koa:sess=") and parts[1].startswith("koa:sess.sig="):
-        print("✅ Cookie 格式正确！")
-    else:
-        print("❌ 格式错误，请检查分号和空格")
+if "gld:sess=" in cookie and "gld:sess.sig=" in cookie and "; " in cookie:
+    print("✅ Cookie 格式正确！")
 else:
-    print("❌ Cookie 缺少必要的字段")
+    print("❌ Cookie 缺少 gld:sess / gld:sess.sig，请检查分号和空格")
 ```
 
 ---
@@ -460,7 +458,7 @@ pip install -r requirements.txt
 
 ```bash
 # 配置 Cookie
-export GLADOS_COOKIE="koa:sess=xxxxxx; koa:sess.sig=yyyyyy"
+export GLADOS_COOKIE="gld:sess=gld_xxxxxx; gld:sess.sig=yyyyyy"
 
 # 可选：配置推送
 export PUSH_LEVEL="all"
@@ -476,7 +474,7 @@ python3 checkin.py
 通过 `crontab -e` 配置每天自动执行（例如每天早上 9:30）：
 
 ```bash
-30 9 * * * export GLADOS_COOKIE="koa:sess=xxx..."; cd /path/to/2026-glados-checkin && python3 checkin.py >> glados.log 2>&1
+30 9 * * * export GLADOS_COOKIE="gld:sess=gld_xxx..."; cd /path/to/2026-glados-checkin && python3 checkin.py >> glados.log 2>&1
 ```
 
 ---
@@ -507,7 +505,7 @@ python3 checkin.py
           # 配置服务
           services.glados-checkin = {
             enable = true;
-            cookie = "koa:sess=xxx; koa:sess.sig=yyy";
+            cookie = "gld:sess=gld_xxx; gld:sess.sig=yyy";
 
             # 【可选】消息推送配置
             pushLevel = "all"; # 或 "fail_only"
@@ -638,6 +636,19 @@ GitHub API 要求必须指定分支名。
 </details>
 
 <details>
+<summary><b>Q: 显示 "没有权限"，用户和积分都是 ? 怎么办？</b></summary>
+
+这表示登录态无效。GLaDOS 已把会话 Cookie 从 `koa:sess` 换成 `gld:sess`。
+
+- 只配 `koa:sess` / `koa:sess.sig` → 接口返回「没有权限」
+- 正确配置：`gld:sess=gld_xxx; gld:sess.sig=yyy`（两个都要有）
+- 浏览器里 `koa` 和 `gld` 可以同时存在，真正用来登录的是 `gld`
+
+重新登录 [https://glados.cloud](https://glados.cloud)，从 Cookie 扩展复制 `gld:sess` 和 `gld:sess.sig`，更新 `GLADOS_COOKIE` 后再跑一次。
+
+</details>
+
+<details>
 <summary><b>Q: Cookie 多久过期？</b></summary>
 
 大约 30 天。过期后重新按第二步获取新 Cookie，更新 Secret 即可。
@@ -733,6 +744,14 @@ cookie1&cookie2&cookie3
 ---
 
 ## 📝 更新日志
+
+### v1.2.0 (2026-09-28) Cookie 登录态切换
+
+**问题**：签到返回「没有权限」，用户/积分/天数均为 `?`。
+
+**原因**：GLaDOS 登录 Cookie 已从 `koa:sess` 改为 `gld:sess` + `gld:sess.sig`。旧 Cookie 会被接口当成未登录。
+
+**修复**：文档改为使用 `gld:sess`；签到成功判定补充新文案 `Today's observation logged...`。
 
 ### v1.1.0 (2026-01-25) 🔥 重大修复
 
