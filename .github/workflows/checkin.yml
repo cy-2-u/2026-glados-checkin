@@ -1,16 +1,23 @@
 name: GLaDOS 2026 Checkin
 
 on:
-  # 已改用外部 cron-job.org 触发，GitHub 自带定时先关掉，需要时再打开
-  # schedule:
-  #   # 北京时间 9:30 (UTC 1:30)
-  #   - cron: '30 1 * * *'
-  workflow_dispatch:  # 允许手动触发 / 外部 cron 调用 dispatches
+  workflow_dispatch:
+    inputs:
+      diagnose_only:
+        description: 只检查 Cookie 是否可读取账号状态，不签到、不兑换、不推送
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   checkin:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      GLADOS_COOKIE: ${{ secrets.GLADOS_COOKIE }}
+      GLADOS_EXCHANGE_PLAN: ${{ secrets.GLADOS_EXCHANGE_PLAN }}
+      CHECKIN_DIAGNOSTIC_ONLY: ${{ inputs.diagnose_only && 'true' || 'false' }}
+      PUSH_LEVEL: ${{ vars.PUSH_LEVEL || 'all' }}
 
     steps:
       - name: Checkout
@@ -25,12 +32,12 @@ jobs:
       - name: Install Dependencies
         run: pip install -r requirements.txt
 
+      - name: Run Tests
+        run: python -m unittest discover -s tests -v
+
       - name: Run Checkin
         run: python checkin.py
         timeout-minutes: 5
-        env:
-          GLADOS_COOKIE: ${{ secrets.GLADOS_COOKIE }}
-          GLADOS_EXCHANGE_PLAN: ${{ secrets.GLADOS_EXCHANGE_PLAN }}
 
       - name: Retry on Failure
         if: failure()
@@ -39,6 +46,3 @@ jobs:
           sleep 60
           python checkin.py
         timeout-minutes: 5
-        env:
-          GLADOS_COOKIE: ${{ secrets.GLADOS_COOKIE }}
-          GLADOS_EXCHANGE_PLAN: ${{ secrets.GLADOS_EXCHANGE_PLAN }}

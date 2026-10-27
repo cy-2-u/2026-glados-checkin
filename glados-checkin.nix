@@ -29,22 +29,16 @@ in
       description = "Level of notification pushing: 'all' or 'fail_only'.";
     };
 
-    telegramBotToken = mkOption {
-      type = types.nullOr types.str;
+    exchangePlan = mkOption {
+      type = types.nullOr (
+        types.enum [
+          "100"
+          "200"
+          "500"
+        ]
+      );
       default = null;
-      description = "Telegram Bot Token for notifications.";
-    };
-
-    telegramChatId = mkOption {
-      type = types.nullOr types.str;
-      default = null;
-      description = "Telegram Chat ID for notifications.";
-    };
-
-    pushplusToken = mkOption {
-      type = types.nullOr types.str;
-      default = null;
-      description = "PushPlus Token for notifications.";
+      description = "Auto-exchange plan: 100/200/500 points. Null disables exchange.";
     };
   };
 
@@ -58,20 +52,13 @@ in
         GLADOS_COOKIE = cfg.cookie;
         PUSH_LEVEL = cfg.pushLevel;
       }
-      // (optionalAttrs (cfg.telegramBotToken != null) {
-        TELEGRAM_BOT_TOKEN = cfg.telegramBotToken;
-      })
-      // (optionalAttrs (cfg.telegramChatId != null) {
-        TELEGRAM_CHAT_ID = cfg.telegramChatId;
-      })
-      // (optionalAttrs (cfg.pushplusToken != null) {
-        PUSHPLUS_TOKEN = cfg.pushplusToken;
+      // (optionalAttrs (cfg.exchangePlan != null) {
+        GLADOS_EXCHANGE_PLAN = cfg.exchangePlan;
       });
 
       serviceConfig = {
         Type = "oneshot";
         ExecStart = "${self.packages.${pkgs.system}.default}/bin/glados-checkin";
-        LoadCredential = [ ]; # Can be used for secrets later if needed
         DynamicUser = true;
       };
     };
